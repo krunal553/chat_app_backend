@@ -1,1 +1,5 @@
 venv/
+static/
+try.py
+db.sqlite3
+.gitignore
