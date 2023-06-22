@@ -1,3 +1,4 @@
+import os
 from pathlib import Path
 from datetime import timedelta
 
@@ -20,6 +21,9 @@ ALLOWED_HOSTS = []
 # Application definition
 
 INSTALLED_APPS = [
+
+    'daphne',
+
     'django.contrib.admin',
     'django.contrib.auth',
     'django.contrib.contenttypes',
@@ -29,6 +33,7 @@ INSTALLED_APPS = [
 
     "chat.apps.ChatConfig",
     "users.apps.UsersConfig",
+
     "rest_framework",
     "rest_framework_simplejwt.token_blacklist",
     "corsheaders",
@@ -110,8 +115,14 @@ TEMPLATES = [
     },
 ]
 
+ASGI_APPLICATION = 'chat_app_backend.asgi.application'
 WSGI_APPLICATION = 'chat_app_backend.wsgi.application'
 
+CHANNEL_LAYERS = {
+    'default': {
+        "BACKEND": 'channels.layers.InMemoryChannelLayer'
+    }
+}
 
 # Database
 # https://docs.djangoproject.com/en/4.2/ref/settings/#databases
@@ -161,6 +172,14 @@ USE_TZ = True
 # https://docs.djangoproject.com/en/4.2/howto/static-files/
 
 STATIC_URL = 'static/'
+MEDIA_URL = '/media/'
+
+STATICFILES_DIRS = [
+    BASE_DIR/'static',
+]
+
+# MEDIA_ROOT = os.path.join(BASE_DIR,'media')
+MEDIA_ROOT = 'static/media'
 
 # Default primary key field type
 # https://docs.djangoproject.com/en/4.2/ref/settings/#default-auto-field

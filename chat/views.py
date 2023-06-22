@@ -1,11 +1,14 @@
-from rest_framework.decorators import api_view, permission_classes
-from rest_framework.permissions import IsAuthenticated
+from rest_framework.decorators import api_view
 from rest_framework.response import Response
-from .models import UserProfile
-from chat.models import Thread, UserMessage
-from chat.serializers import ThreadSerializer, MessageSerializer, FilteredMessageSerializer
-from rest_framework import status
 from django.db.models import Q
+from rest_framework import status
+from rest_framework.permissions import IsAuthenticated
+from rest_framework.generics import CreateAPIView, ListAPIView, ListCreateAPIView
+from rest_framework.views import APIView
+from .models import UserMessage, Thread
+from .serializers import MessageSerializer, ThreadSerializer
+from users.models import UserProfile
+import uuid
 
 
 @api_view(['GET'])
@@ -16,164 +19,111 @@ def get_routes(request):
     ]
     return Response(routes)
 
-@api_view(['POST'])
-@permission_classes((IsAuthenticated,))
-def get_or_create_thread(request):
-    sender = request.user.profile
-    recipient_id = request.data.get('recipient_id')
-    recipient = UserProfile.objects.get(id=recipient_id)
-    if recipient_id is not None:
-        try:
-            # thread, created = Thread.objects.get_or_create(sender=sender, receiver=recipient)
-            user_thread = Thread.objects.filter(
-                Q(sender=sender, receiver=recipient) | Q(sender=recipient, receiver=sender)
-            )
-            if user_thread.exists():
-                thread = user_thread.first()
-            else:
-                thread = Thread.objects.create(sender=sender, receiver=recipient)
+# class ReadMessageApiView(ListCreateAPIView):
+#     queryset = UserMessage.objects.all()
+#     serializer_class = MessageSerializer
 
-            serializer = ThreadSerializer(thread, many=False, context={'request': request, 'thread': thread})
-            return Response(serializer.data)
-        except UserProfile.DoesNotExist:
-            return Response({'detail':'User with that id doesnt not exists'})
-    else:
-        return Response({'details':'Recipient id not found'})
+class MessageAPIView(APIView):
+    permission_classes = [IsAuthenticated]
 
-
-@api_view(['POST'])
-@permission_classes((IsAuthenticated,))
-def create_message(request):
-    sender = request.user.profile
-    data = request.data
-    receiver = UserProfile.objects.get(username=data.get('username'))
-    if receiver:
-        message = data.get('message')
-        thread = Thread.objects.filter(
-            Q(sender=sender, receiver=receiver) | Q(sender=receiver, receiver=sender)
-        ).first()
-        if thread:
-            if message is not None:
-                message = UserMessage.objects.create(thread=thread, sender=sender, body=message)
-                message.save()
-                serializer = MessageSerializer(message, many=False)
-                return Response(serializer.data)
-            else:
-                return Response({'details':'Content for message required'})
-        else:
-            return Response({'details':'Thread not found'})
-    else:
-        return Response({'details':'Please provide other user id'})
-    
-
-# @api_view(['GET'])
-# def read_messages(request, pk):
-#     try:
-#         thread = Thread.objects.get(thread_id=pk)
-#         un_read = thread.messages.filter(is_read=False)
-#         for msg in un_read:
-#             msg.is_read = True
-#             msg.save()
-#         messages = thread.messages.all()
-#         serializer = MessageSerializer(messages, many=True)
-#         return Response(serializer.data)
-#     except Exception as e:
-#         return Response({'details': f"{e}"}, status=status.HTTP_204_NO_CONTENT)
-
-@api_view(['GET'])
-@permission_classes((IsAuthenticated,))
-def read_messages(request, username):
-    try:
+    def post (self, request, format=None):
+        serializer = MessageSerializer(data=request.data)
+        if serializer.is_valid():
+            serializer.save(sender=request.user.profile)
+            return Response({"data":serializer.data}, status=status.HTTP_201_CREATED)
+        return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+        
+    def get (self, request, pk=None, format=None):
         user = request.user.profile
-        user_to_chat_with = UserProfile.objects.get(username=username)
-        thread = Thread.objects.filter(
-            Q(sender=user, receiver=user_to_chat_with) | Q(sender=user_to_chat_with, receiver=user)
-        ).first()        
-        messages = thread.messages
+        try:
+            thread = Thread.objects.get(id=pk)
+        except Thread.DoesNotExist:
+            return Response([], status=status.HTTP_404_NOT_FOUND)
+
         if thread.sender == user or thread.receiver == user:
+            messages = thread.messages
             if thread.sender == user:
-                messages = thread.messages.filter(deleted_by_thread_sender=None)
+                messages = messages.exclude(deleted_by_thread_sender=user)
             elif thread.receiver == user:
-                messages = thread.messages.filter(deleted_by_thread_receiver=None)
+                messages = messages.exclude(deleted_by_thread_receiver=user)
             for message in messages:
                 if message.sender != user:
                     message.is_read = True
                     message.save()
-
-            # serializer = FilteredMessageSerializer(
-            #     messages, many=True, 
-            #     context={'request': request, 'thread': thread, 'user': user}
-            # )
-            serializer = FilteredMessageSerializer(messages, many=True)
+            serializer = MessageSerializer(messages, many=True)
             return Response(serializer.data)
-        else:
-            return Response({'details': 'You do not have permission to read this thread.'},
-                            status=status.HTTP_403_FORBIDDEN)
-    except Thread.DoesNotExist:
-        return Response({'details': 'Thread not found'}, status=status.HTTP_404_NOT_FOUND)
-
-
-
-@api_view(['DELETE'])
-@permission_classes((IsAuthenticated,))
-def delete_messages(request, username):
-    try:
+        return Response([])
+        
+    def patch (self, request, pk=None, format=None):
         user = request.user.profile
-        user_to_chat_with = UserProfile.objects.get(username=username)
-        thread = Thread.objects.filter(
-            Q(sender=user, receiver=user_to_chat_with) | Q(sender=user_to_chat_with, receiver=user)
-        ).first() 
-
-        messages = thread.messages
+        try:
+            thread = Thread.objects.get(id=pk)
+        except Thread.DoesNotExist:
+            return Response({'detail': 'Thread not found.'}, status=status.HTTP_404_NOT_FOUND)
         
         if thread.sender == user:
-            messages.filter(deleted_by_thread_sender=None).update(deleted_by_thread_sender=user)
-            return Response(MessageSerializer(messages, many=True).data)
+            messages = thread.messages.exclude(deleted_by_thread_sender=user)
+            messages.update(deleted_by_thread_sender=user)
         elif thread.receiver == user:
-            messages.filter(deleted_by_thread_receiver=None).update(deleted_by_thread_receiver=user)
-            return Response(MessageSerializer(messages, many=True).data)
+            messages = thread.messages.exclude(deleted_by_thread_receiver=user)
+            messages.update(deleted_by_thread_receiver=user)  
+        else:
+            return Response({'detail': 'You are not authorized to delete messages in this thread.'}, status=status.HTTP_403_FORBIDDEN)
 
-            
-        return Response({'detail': 'You are not authorized to delete this message.'}, status=status.HTTP_403_FORBIDDEN)
-        
-
-    except Exception as e:
-            return Response({'details': f"{e}"},status=status.HTTP_204_NO_CONTENT)
+        return Response({'detail': 'Messages deleted successfully.'}, status=status.HTTP_200_OK)
 
 
-@api_view(['GET'])
-@permission_classes((IsAuthenticated,))
-def get_user_threads(request):
-    user = request.user.profile
-    # user = UserProfile.objects.get(user=usr)
-    threads = Thread.objects.filter(Q(sender=user) | Q(receiver=user))
-    serializer = ThreadSerializer(threads, many=True, context={'request': request, 'user': user})
-    return Response(serializer.data)
+class ThreadAPIView(APIView):
+    def get (self, request, format=None):
+        user = request.user.profile
+        threads = Thread.objects.filter(Q(sender=user) | Q(receiver=user))
+        serializer = ThreadSerializer(threads, many=True, context={'request': request, 'user': user})
+        sorted_threads = sorted(serializer.data, key=lambda t: t['last_message']['timestamp'])
 
-# chat thread b/w meet and krunal
-# a75b9be6-5568-4e63-ac4c-2d70874e54a1
+        return Response(sorted_threads)
+
+    def post(self, request):
+        receiver_id = request.data.get('receiver_id')
+        sender = request.user.profile
+
+        try:
+            receiver_uuid = uuid.UUID(receiver_id)
+        except ValueError:
+            return Response("Invalid receiver_id format.", status=status.HTTP_400_BAD_REQUEST)
 
 
-# sample apis
+        print(f"sender_id: {sender.id} and receiver_id is {receiver_id}")
 
-@api_view(['GET'])
-def get_messages(request):
-    thread = request.query_params.get('thread')
-    messages = UserMessage.objects.filter(thread=thread)
-    serializer = MessageSerializer(messages, many=True)
-    return Response(serializer.data)
+        if sender.id == receiver_uuid:
+            return Response({"detail":"Sender and receiver cannot be the same user."}, status=status.HTTP_400_BAD_REQUEST)
 
-@api_view(['GET'])
-def get_all_messages(requrst):
-    msgs = UserMessage.objects.all()
-    serializer = MessageSerializer(msgs, many=True)
-    # serializer = FilteredMessageSerializer(msgs, many=True, context={'request': request, 'thread': thread, 'user': user})
+        try:
+            thread = Thread.objects.get(Q(sender=sender, receiver=receiver_uuid) | Q(sender=receiver_uuid, receiver=sender))
+            serializer = ThreadSerializer(thread, many=False, context={'request': request, 'thread': thread})
+            return Response(serializer.data, status=status.HTTP_200_OK)
+        except Thread.DoesNotExist:
+            thread = Thread(sender=sender, receiver=receiver_uuid)
+            thread.save()
+            serializer = ThreadSerializer(thread, many=False, context={'request': request, 'thread': thread})
+            return Response(serializer.data, status=status.HTTP_201_CREATED)
 
-    return Response(serializer.data)
+    # def post(self, request):
+    #     serializer = ThreadSerializer(data=request.data, context={'request': request})
 
-@api_view(['GET'])
-def get_all_threads(requrst):
-    thread = Thread.objects.all()
-    serializer = ThreadSerializer(thread, many=True)
-    return Response(serializer.data)
+    #     if serializer.is_valid():
+    #         sender = request.user.profile
+    #         receiver = serializer.validated_data['receiver']
 
+    #         if sender == receiver:
+    #             return Response({"detail": "Sender and receiver cannot be the same user."}, status=status.HTTP_400_BAD_REQUEST)
+
+    #         thread = Thread.objects.filter(Q(sender=sender, receiver=receiver) | Q(sender=receiver, receiver=sender)).first()
+    #         if thread:
+    #             serializer = ThreadSerializer(thread, many=False, context={'request': request, 'thread': thread})
+    #             return Response(serializer.data, status=status.HTTP_200_OK)
+
+    #         thread = Thread.objects.create(sender=sender, receiver=receiver)
+    #         serializer = ThreadSerializer(thread, many=False, context={'request': request, 'thread': thread})
+    #         return Response(serializer.data, status=status.HTTP_201_CREATED)
+
+    #     return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)

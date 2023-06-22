@@ -10,7 +10,7 @@ class MessageSerializer(serializers.ModelSerializer):
 
     class Meta:
         model = UserMessage
-        fields = '__all__'
+        fields = ['id', 'thread', 'sender', 'body', 'file', 'is_read', 'timestamp']
 
 
 class FilteredMessageSerializer(serializers.ModelSerializer):
@@ -49,14 +49,14 @@ class ThreadSerializer(serializers.ModelSerializer):
     un_read_count = serializers.SerializerMethodField(read_only=True)
     class Meta:
         model = Thread
-        fields = ['thread_id', 'timestamp', 'user_to_chat_with', 'last_message', 'un_read_count']
+        fields = ['id', 'sender' , 'receiver','timestamp', 'user_to_chat_with', 'last_message', 'un_read_count']
 
     def get_last_message(self, obj):
         user = self.context['request'].user.profile
         if obj.sender == user:
-            message = obj.messages.filter(deleted_by_thread_sender=None).order_by('timestamp').last()
+            message = obj.messages.order_by('timestamp').last()
         elif obj.receiver == user:
-            message = obj.messages.filter(deleted_by_thread_receiver=None).order_by('timestamp').last()
+            message = obj.messages.order_by('timestamp').last()
 
         # message = obj.messages.order_by('timestamp').last()
         serializer = MessageSerializer(message, many=False)

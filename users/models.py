@@ -7,7 +7,7 @@ class UserProfile(models.Model):
     user = models.OneToOneField(User, on_delete=models.CASCADE, related_name='profile')
     name = models.CharField(max_length=200, null=True)
     username = models.CharField(max_length=200, null=True)
-    profile_pic = models.ImageField(blank=True, null=True, default='default.png')
+    profile_pic = models.ImageField(default='profile_pictures/default.jpg')
     followers = models.ManyToManyField(User, related_name='following', blank=True)
     bio = models.TextField(null=True)
     """

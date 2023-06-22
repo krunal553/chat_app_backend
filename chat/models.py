@@ -6,12 +6,11 @@ from django.core.exceptions import ValidationError
 from django.core.validators import FileExtensionValidator
 
 class Thread(models.Model):
-    thread_id = models.UUIDField(default=uuid.uuid4, primary_key=True, editable=False)
+    id = models.UUIDField(default=uuid.uuid4, primary_key=True, editable=False)
     sender = models.ForeignKey(UserProfile, on_delete=models.CASCADE, related_name="sender_thread")
     receiver = models.ForeignKey(UserProfile, on_delete=models.CASCADE, related_name="receiver_thread")
     # timestamp = models.DateTimeField(auto_now_add=True)
     timestamp = models.DateTimeField(default=timezone.now)
-
 
     class Meta:
         constraints = [
@@ -50,8 +49,6 @@ class UserMessage(models.Model):
         null=True, blank=True,
         related_name="deleted_messages_receiver"
     )
-
-
 
     def __str__(self):
         if self.file:

@@ -5,6 +5,10 @@ from .models import UserProfile, User
 from .serializers import UserProfileSerializer, UserSerializer
 from rest_framework_simplejwt.serializers import TokenObtainPairSerializer
 from rest_framework_simplejwt.views import TokenObtainPairView
+from rest_framework.generics import RetrieveAPIView, ListAPIView
+from rest_framework.permissions import IsAuthenticated
+from rest_framework.filters import SearchFilter
+from django.db.models import Q
 
 @api_view(['GET'])
 def get_routes(request):
@@ -14,30 +18,33 @@ def get_routes(request):
     ]
     return Response(routes)
 
-@api_view(['GET'])
-def get_user_profiles(request):
-    users = UserProfile.objects.all()
-    serializer = UserProfileSerializer(users, many=True)
-    return Response(serializer.data)
+class RetrieveUserAPIView(RetrieveAPIView):
+    permission_classes = [IsAuthenticated]
+    queryset = UserProfile.objects.all()
+    serializer_class = UserProfileSerializer
+    lookup_field = 'id'
 
-@api_view(['POST'])
-@permission_classes((IsAuthenticated,))
-def get_user_profile(request):
-    username = request.data.get('username')
-    user = UserProfile.objects.get(username=username)
-    serializer = UserProfileSerializer(user, many=False)
-    return Response(serializer.data)
+class UserSearchAPIView(ListAPIView):
+    permission_classes = [IsAuthenticated]
+    queryset = UserProfile.objects.all()
+    serializer_class = UserProfileSerializer
+    # filter_backends = [SearchFilter]
+    # search_fields = ['name', 'username']
 
-
-@api_view(['GET'])
-def get_users(request):
-    users = User.objects.all()
-    serializer = UserSerializer(users, many=True)
-    return Response(serializer.data)
-
+    def get_queryset(self):
+        queryset = super().get_queryset()
+        query = self.request.query_params.get('query', '')
+        terms = query.split()  # Split query into individual terms
+        if terms:
+            q_objects = Q()  # Create an empty Q object to combine search conditions
+            for term in terms:
+                q_objects |= Q(name__icontains=term) | Q(username__icontains=term)
+            queryset = queryset.filter(q_objects)
+        else:
+            queryset = queryset.none()  # Return an empty queryset
+        return queryset
 
 # authentication and authorization
-
 
 class MyTokenObtainPairSerializer(TokenObtainPairSerializer):
     @classmethod
@@ -50,7 +57,6 @@ class MyTokenObtainPairSerializer(TokenObtainPairSerializer):
             UserProfile.objects.get(username=user.username), many=False
             ).data['profile_pic']
         # ...
-
         return token
     
 class MyTokenObtainPairView(TokenObtainPairView):
