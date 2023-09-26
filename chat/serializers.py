@@ -63,7 +63,10 @@ class ThreadSerializer(serializers.ModelSerializer):
         return serializer.data
 
     def get_un_read_count(self, obj):
-        un_read_count = obj.messages.filter(is_read=False).count()
+        un_read_messages = obj.messages.filter(is_read=False)
+        un_read_count = 0
+        if un_read_messages.exists() and un_read_messages.last().sender != self.context['request'].user.profile:
+            un_read_count = un_read_messages.count()
         return un_read_count
     
     def get_user_to_chat_with(self, obj):

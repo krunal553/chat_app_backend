@@ -7,7 +7,8 @@ from rest_framework_simplejwt.views import (
 
 urlpatterns = [
     # path('routes/', views.get_routes, name="get-routes"),
-    path('<uuid:id>/', views.RetrieveUserAPIView.as_view(), name='user-profile'),
+    # path('<uuid:id>/', views.RetrieveUserAPIView.as_view(), name='user-profile'),
+    path('<uuid:pk>/', views.UserProfileAPIView.as_view(), name='user-profile'),
     path('search/', views.UserSearchAPIView.as_view(), name='user-search'),
 
     path('token/', MyTokenObtainPairView.as_view(), name='token_obtain_pair'),

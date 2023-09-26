@@ -9,6 +9,10 @@ from rest_framework.generics import RetrieveAPIView, ListAPIView
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.filters import SearchFilter
 from django.db.models import Q
+from rest_framework.views import APIView
+from chat.models import Thread
+from rest_framework import status
+
 
 @api_view(['GET'])
 def get_routes(request):
@@ -23,6 +27,30 @@ class RetrieveUserAPIView(RetrieveAPIView):
     queryset = UserProfile.objects.all()
     serializer_class = UserProfileSerializer
     lookup_field = 'id'
+
+class UserProfileAPIView(APIView):
+    permission_classes = [IsAuthenticated]
+
+    def get (self, request, pk=None, format=None):
+        user = request.user.profile
+        try:
+            thread = Thread.objects.get(id=pk)
+        except Thread.DoesNotExist:
+            return Response({"detail": 'Thread not found'}, status=status.HTTP_400_BAD_REQUEST)
+
+        if thread.sender == user or thread.receiver == user:
+            if thread.sender == user:
+                user_to_chat = thread.receiver
+            else:
+                user_to_chat = thread.sender
+            serializer = UserProfileSerializer(user_to_chat, many=False)
+            return Response(serializer.data)
+
+        return Response([], status=status.HTTP_400_BAD_REQUEST)
+
+
+
+
 
 class UserSearchAPIView(ListAPIView):
     permission_classes = [IsAuthenticated]
@@ -56,6 +84,9 @@ class MyTokenObtainPairSerializer(TokenObtainPairSerializer):
         token['profile_pic'] = UserProfileSerializer(
             UserProfile.objects.get(username=user.username), many=False
             ).data['profile_pic']
+        token['pid'] = UserProfileSerializer(
+            UserProfile.objects.get(username=user.username), many=False
+            ).data['id']
         # ...
         return token
     
